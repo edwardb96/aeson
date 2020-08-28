@@ -951,7 +951,12 @@ parseRecord jc tvMap argTys opts tName conName fields obj inTaggedObject =
                           (appE [|show|] (varE unknownFields)))
                       []
               ]
+      boolE :: Bool -> Q Exp
+      boolE True = conE 'True
+      boolE False = conE 'False
+
       x:xs = [ [|lookupField|]
+               `appE` boolE (omitNothingFields opts)
                `appE` dispatchParseJSON jc conName tvMap argTy
                `appE` litE (stringL $ show tName)
                `appE` litE (stringL $ constructorTagModifier opts $ nameBase conName)
@@ -1120,19 +1125,20 @@ parseTypeMismatch tName conName expected actual =
           ]
 
 class LookupField a where
-    lookupField :: (Value -> Parser a) -> String -> String
+    lookupField :: Bool -> (Value -> Parser a) -> String -> String
                 -> Object -> T.Text -> Parser a
 
 instance OVERLAPPABLE_ LookupField a where
-    lookupField = lookupFieldWith
+    lookupField _ = lookupFieldWith
 
 instance INCOHERENT_ LookupField (Maybe a) where
-    lookupField pj _ _ = parseOptionalFieldWith pj
+    lookupField True pj _ _ = parseOptionalFieldWith pj
+    lookupField False pj tName rec = lookupFieldWith pj tName rec
 
 instance INCOHERENT_ LookupField (Semigroup.Option a) where
-    lookupField pj tName rec obj key =
+    lookupField o pj tName rec obj key =
         fmap Semigroup.Option
-             (lookupField (fmap Semigroup.getOption . pj) tName rec obj key)
+             (lookupField o (fmap Semigroup.getOption . pj) tName rec obj key)
 
 lookupFieldWith :: (Value -> Parser a) -> String -> String
                 -> Object -> T.Text -> Parser a
